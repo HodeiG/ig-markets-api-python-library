@@ -5,6 +5,9 @@ import os
 import logging
 import traceback
 import six
+import string
+from random import choice
+from threading import Lock
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +33,23 @@ DATE_FORMATS = {
     2: "%Y/%m/%d %H:%M:%S",
     3: "%Y/%m/%d %H:%M:%S"
 }
+
+
+DEAL_REF_LOCK = Lock()
+DEAL_REF_PREFIX = ''.join(choice(string.ascii_uppercase) for i in range(6))
+DEAL_REF_COUNT = 0
+
+
+def generate_deal_reference():
+    """
+    Function to return a unique deal reference.
+
+    Format: {DEAL_REF_PREFIX} + {DEAL_REF_COUNT}
+    """
+    global DEAL_REF_COUNT, DEAL_REF_LOCK
+    with DEAL_REF_LOCK:
+        DEAL_REF_COUNT += 1
+    return DEAL_REF_PREFIX + ("%09d" % DEAL_REF_COUNT)
 
 
 def conv_resol(resolution):

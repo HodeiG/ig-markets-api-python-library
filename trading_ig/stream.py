@@ -14,9 +14,10 @@ import json
 from .lightstreamer import LSClient, Subscription
 
 logger = logging.getLogger(__name__)
-CHANNELS = {
-    "trade": 'inproc://trade_events'
-}
+
+SUB_TRADE_CONFIRMS = 'inproc://sub_trade_confirms'
+SUB_TRADE_OPU = 'inproc://sub_trade_opu'
+SUB_TRADE_WOU = 'inproc://sub_trade_wou'
 
 
 class IGStreamService(object):
@@ -51,35 +52,70 @@ class IGStreamService(object):
             sys.exit(1)
 
         # Create subsciption channel for trade events
+        self._create_subscription_channels(accountId)
+
+    def _create_subscription_channels(self, accountId):
+        """
+        Function to create a subscription with the Lightstream server and
+        create a local publish/subscription system to read those events when
+        they are needed using the 'wait_event' function.
+        """
+        self.publishers = []
         subscription = Subscription(
             mode="DISTINCT",
             items=["TRADE:%s" % accountId],
             fields=["CONFIRMS", "OPU", "WOU"])
-        pub = nnpy.Socket(nnpy.AF_SP, nnpy.PUB)
-        pub.bind(CHANNELS['trade'])
 
-        def on_item_update(item_update):
-            pub.send(dill.dumps(item_update))
+        pub_confirms = nnpy.Socket(nnpy.AF_SP, nnpy.PUB)
+        pub_confirms.bind(SUB_TRADE_CONFIRMS)
+        self.publishers.append(pub_confirms)
+
+        pub_opu = nnpy.Socket(nnpy.AF_SP, nnpy.PUB)
+        pub_opu.bind(SUB_TRADE_OPU)
+        self.publishers.append(pub_opu)
+
+        pub_wou = nnpy.Socket(nnpy.AF_SP, nnpy.PUB)
+        pub_wou.bind(SUB_TRADE_WOU)
+        self.publishers.append(pub_wou)
+
+        def on_item_update(data):
+            logger.info(data)
+            values = data.get('values', {})
+            # Publish confirms
+            event = values.get('CONFIRMS')
+            if event:
+                pub_confirms.send(dill.dumps(event))
+            # Publish opu
+            event = values.get('OPU')
+            if event:
+                pub_opu.send(dill.dumps(event))
+            # Publish wou
+            event = values.get('WOU')
+            if event:
+                pub_wou.send(dill.dumps(event))
 
         subscription.addlistener(on_item_update)
         self.ls_client.subscribe(subscription)
 
-    def wait(self, find_function):
+    def wait_event(self, sub_channel, func_event_type):
+        """
+        Function to subscribe to a channel and wait until a specific event
+        happens.
+
+        The function will return a future object which will return the event
+        value once it's ready.
+        """
         def subscribe():
             sub = nnpy.Socket(nnpy.AF_SP, nnpy.SUB)
-            sub.connect(CHANNELS['trade'])
+            sub.connect(sub_channel)
             sub.setsockopt(nnpy.SUB, nnpy.SUB_SUBSCRIBE, '')
-            order = None
-            while order is None:
-                data = dill.loads(sub.recv())
-                for value in data.get('values', {}).values():
-                    if value is not None:
-                        value = json.loads(value)
-                        if find_function(value):
-                            order = value
-                            break
+            event = None
+            while event is None:
+                data = json.loads(dill.loads(sub.recv()))
+                if func_event_type(data):
+                    event = data
             sub.close()
-            return order
+            return event
 
         executor = futures.ThreadPoolExecutor()
         future = executor.submit(subscribe)
@@ -92,5 +128,8 @@ class IGStreamService(object):
             self.ls_client.unsubscribe(subcription_key)
 
     def disconnect(self):
+        for publisher in self.publishers:
+            publisher.close()
+        self.publishers = []
         self.unsubscribe_all()
         self.ls_client.disconnect()

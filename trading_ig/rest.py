@@ -17,7 +17,8 @@ import time
 
 from .utils import (_HAS_PANDAS, _HAS_MUNCH)
 from .utils import (conv_resol, conv_datetime, conv_to_ms, DATE_FORMATS)
-
+from .utils import generate_deal_reference
+from trading_ig.stream import IGStreamService, SUB_TRADE_CONFIRMS
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,6 @@ class IGSessionCRUD(object):
     def read(self, endpoint, params, session):
         """Read = GET with headers=LOGGED_IN_HEADERS"""
         url = self._url(endpoint)
-        # print(url, params)
         session = self._get_session(session)
         response = session.get(url,
                                params=params,
@@ -484,7 +484,9 @@ class IGService:
                              trailing_stop, trailing_stop_increment,
                              session=None):
         """Creates an OTC position"""
+        deal_reference = generate_deal_reference()
         params = {
+            'dealReference': deal_reference,
             'currencyCode': currency_code,
             'direction': direction,
             'epic': epic,
@@ -506,6 +508,11 @@ class IGService:
         endpoint = '/positions/otc'
         action = 'create'
 
+        # Get future to wait for the event
+        future = self.stream.wait_event(
+            SUB_TRADE_CONFIRMS,
+            lambda v: v['dealReference'] == deal_reference)
+
         # Trailing stop is supported in version 2
         # Version headers should be include
 
@@ -516,8 +523,7 @@ class IGService:
 
         # Remove the header to back compatibility
         if response.status_code == 200:
-            deal_reference = json.loads(response.text)['dealReference']
-            return self.fetch_deal_by_deal_reference(deal_reference)
+            return future.result()
         else:
             raise IGException(response.text)
 
@@ -598,6 +604,9 @@ class IGService:
         if good_till_date is not None and type(good_till_date) is not int:
             good_till_date = conv_datetime(good_till_date, VERSION)
 
+        if deal_reference is None:
+            deal_reference = generate_deal_reference()
+
         params = {
             'currencyCode': currency_code,
             'direction': direction,
@@ -625,14 +634,17 @@ class IGService:
         endpoint = '/workingorders/otc'
         action = 'create'
 
+        # Get future to wait for the event
+        future = self.stream.wait_event(
+            SUB_TRADE_CONFIRMS,
+            lambda v: v['dealReference'] == deal_reference)
+
         self.crud_session.HEADERS['LOGGED_IN']['Version'] = str(VERSION)
-        # print(params)
         response = self._req(action, endpoint, params, session)
         del(self.crud_session.HEADERS['LOGGED_IN']['Version'])
 
         if response.status_code == 200:
-            deal_reference = json.loads(response.text)['dealReference']
-            return self.fetch_deal_by_deal_reference(deal_reference)
+            return future.result()
         else:
             raise IGException(response.text)
 
@@ -1078,6 +1090,18 @@ class IGService:
         endpoint = '/session'
         action = 'delete'
         self._req(action, endpoint, params, session)
+        self.close_stream()
+
+    def close_stream(self):
+        if hasattr(self, 'stream') and self.stream:
+            self.stream.disconnect()
+
+    def create_stream(self):
+        self.close_stream()
+        session = self.read_session()
+        self.stream = IGStreamService(self)
+        self.stream.ig_session = session
+        self.stream.connect(session['accountId'])
 
     def create_session(self, session=None):
         """Creates a trading session, obtaining session tokens for
@@ -1092,6 +1116,7 @@ class IGService:
         response = self._req(action, endpoint, params, session)
         data = self.parse_response(response.text)
         self.ig_session = data  # store IG session
+        self.create_stream()
         return data
 
     def switch_account(self, account_id, default_account, session=None):
@@ -1105,6 +1130,7 @@ class IGService:
         response = self._req(action, endpoint, params, session)
         self.crud_session._set_headers(response.headers, False)
         data = self.parse_response(response.text)
+        self.create_stream()
         return data
 
     def read_session(self, session=None):

@@ -18,7 +18,8 @@ import time
 from .utils import (_HAS_PANDAS, _HAS_MUNCH)
 from .utils import (conv_resol, conv_datetime, conv_to_ms, DATE_FORMATS)
 from .utils import generate_deal_reference
-from trading_ig.stream import IGStreamService, SUB_TRADE_CONFIRMS
+from trading_ig.stream import IGStreamService, SUB_TRADE_CONFIRMS, \
+    SUB_TRADE_OPU
 
 logger = logging.getLogger(__name__)
 
@@ -537,13 +538,17 @@ class IGService:
         url_params = {
             'deal_id': deal_id
         }
+        # Get future to wait for the event
+        future = self.stream.wait_event(
+            SUB_TRADE_OPU,
+            lambda v: v['dealId'] == deal_id)
+
         endpoint = '/positions/otc/{deal_id}'.format(**url_params)
         action = 'update'
         response = self._req(action, endpoint, params, session)
 
         if response.status_code == 200:
-            deal_reference = json.loads(response.text)['dealReference']
-            return self.fetch_deal_by_deal_reference(deal_reference)
+            return future.result()
         else:
             raise IGException(response.text)
 

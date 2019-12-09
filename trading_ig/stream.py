@@ -9,6 +9,7 @@ import logging
 import nnpy
 import dill
 from concurrent import futures
+from queue import Queue
 import json
 
 from .lightstreamer import LSClient, Subscription
@@ -97,30 +98,6 @@ class IGStreamService(object):
         subscription.addlistener(on_item_update)
         self.ls_client.subscribe(subscription)
 
-    def wait_event(self, sub_channel, func_event_type):
-        """
-        Function to subscribe to a channel and wait until a specific event
-        happens.
-
-        The function will return a future object which will return the event
-        value once it's ready.
-        """
-        def subscribe():
-            sub = nnpy.Socket(nnpy.AF_SP, nnpy.SUB)
-            sub.connect(sub_channel)
-            sub.setsockopt(nnpy.SUB, nnpy.SUB_SUBSCRIBE, '')
-            event = None
-            while event is None:
-                data = json.loads(dill.loads(sub.recv()))
-                if func_event_type(data):
-                    event = data
-            sub.close()
-            return event
-
-        executor = futures.ThreadPoolExecutor()
-        future = executor.submit(subscribe)
-        return future
-
     def unsubscribe_all(self):
         # To avoid a RuntimeError: dictionary changed size during iteration
         subscriptions = self.ls_client._subscriptions.copy()
@@ -133,3 +110,53 @@ class IGStreamService(object):
         self.publishers = []
         self.unsubscribe_all()
         self.ls_client.disconnect()
+
+
+class Channel:
+    def __init__(self, channel):
+        self.channel = channel
+
+    def _update_queue(self, sub, queue):
+        while True:
+            try:
+                queue.put(json.loads(dill.loads(sub.recv())))
+            except nnpy.errors.NNError:
+                break
+
+    def _process_queue(self, queue, function):
+        data = None
+        while True:
+            data = queue.get()
+            if function(data):
+                break
+        return data
+
+    def wait_event(self, key, value):
+        sub = nnpy.Socket(nnpy.AF_SP, nnpy.SUB)
+        sub.connect(self.channel)
+        sub.setsockopt(nnpy.SUB, nnpy.SUB_SUBSCRIBE, '')
+        queue = Queue()
+        result = None
+        with futures.ThreadPoolExecutor() as executor:
+            executor.submit(self._update_queue, sub, queue)
+            future = executor.submit(
+                self._process_queue, queue, lambda v: v[key] == value)
+            result = future.result()
+            sub.close()  # Close subscriber to stop _update_queue
+        queue.queue.clear()  # Empty queue
+        return result
+
+
+class ConfirmChannel(Channel):
+    def __init__(self):
+        super().__init__(SUB_TRADE_CONFIRMS)
+
+
+class OPUChannel(Channel):
+    def __init__(self):
+        super().__init__(SUB_TRADE_OPU)
+
+
+class WOUChannel(Channel):
+    def __init__(self):
+        super().__init__(SUB_TRADE_WOU)

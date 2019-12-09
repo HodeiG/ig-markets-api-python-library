@@ -17,9 +17,7 @@ import time
 
 from .utils import (_HAS_PANDAS, _HAS_MUNCH)
 from .utils import (conv_resol, conv_datetime, conv_to_ms, DATE_FORMATS)
-from .utils import generate_deal_reference
-from trading_ig.stream import IGStreamService, SUB_TRADE_CONFIRMS, \
-    SUB_TRADE_OPU
+from trading_ig.stream import IGStreamService, ConfirmChannel
 
 logger = logging.getLogger(__name__)
 
@@ -468,13 +466,17 @@ class IGService:
             'quoteId': quote_id,
             'size': size
         }
+
+        # Create channel before the request so the events get queued
+        channel = ConfirmChannel()
+
         endpoint = '/positions/otc'
         action = 'delete'
         response = self._req(action, endpoint, params, session)
 
         if response.status_code == 200:
             deal_reference = json.loads(response.text)['dealReference']
-            return self.fetch_deal_by_deal_reference(deal_reference)
+            return channel.wait_event("dealReference", deal_reference)
         else:
             raise IGException(response.text)
 
@@ -485,9 +487,7 @@ class IGService:
                              trailing_stop, trailing_stop_increment,
                              session=None):
         """Creates an OTC position"""
-        deal_reference = generate_deal_reference()
         params = {
-            'dealReference': deal_reference,
             'currencyCode': currency_code,
             'direction': direction,
             'epic': epic,
@@ -509,13 +509,8 @@ class IGService:
         endpoint = '/positions/otc'
         action = 'create'
 
-        # Get future to wait for the event
-        future = self.stream.wait_event(
-            SUB_TRADE_CONFIRMS,
-            lambda v: v['dealReference'] == deal_reference)
-
-        # Trailing stop is supported in version 2
-        # Version headers should be include
+        # Create channel before the request so the events get queued
+        channel = ConfirmChannel()
 
         self.crud_session.HEADERS['LOGGED_IN']['Version'] = '2'
         response = self._req(action, endpoint, params, session)
@@ -524,7 +519,8 @@ class IGService:
 
         # Remove the header to back compatibility
         if response.status_code == 200:
-            return future.result()
+            deal_reference = json.loads(response.text)['dealReference']
+            return channel.wait_event("dealReference", deal_reference)
         else:
             raise IGException(response.text)
 
@@ -538,17 +534,17 @@ class IGService:
         url_params = {
             'deal_id': deal_id
         }
-        # Get future to wait for the event
-        future = self.stream.wait_event(
-            SUB_TRADE_OPU,
-            lambda v: v['dealId'] == deal_id)
+
+        # Create channel before the request so the events get queued
+        channel = ConfirmChannel()
 
         endpoint = '/positions/otc/{deal_id}'.format(**url_params)
         action = 'update'
         response = self._req(action, endpoint, params, session)
 
         if response.status_code == 200:
-            return future.result()
+            deal_reference = json.loads(response.text)['dealReference']
+            return channel.wait_event("dealReference", deal_reference)
         else:
             raise IGException(response.text)
 
@@ -609,9 +605,6 @@ class IGService:
         if good_till_date is not None and type(good_till_date) is not int:
             good_till_date = conv_datetime(good_till_date, VERSION)
 
-        if deal_reference is None:
-            deal_reference = generate_deal_reference()
-
         params = {
             'currencyCode': currency_code,
             'direction': direction,
@@ -639,17 +632,16 @@ class IGService:
         endpoint = '/workingorders/otc'
         action = 'create'
 
-        # Get future to wait for the event
-        future = self.stream.wait_event(
-            SUB_TRADE_CONFIRMS,
-            lambda v: v['dealReference'] == deal_reference)
+        # Create channel before the request so the events get queued
+        channel = ConfirmChannel()
 
         self.crud_session.HEADERS['LOGGED_IN']['Version'] = str(VERSION)
         response = self._req(action, endpoint, params, session)
         del(self.crud_session.HEADERS['LOGGED_IN']['Version'])
 
         if response.status_code == 200:
-            return future.result()
+            deal_reference = json.loads(response.text)['dealReference']
+            return channel.wait_event("dealReference", deal_reference)
         else:
             raise IGException(response.text)
 
@@ -659,13 +651,17 @@ class IGService:
         url_params = {
             'deal_id': deal_id
         }
+
+        # Create channel before the request so the events get queued
+        channel = ConfirmChannel()
+
         endpoint = '/workingorders/otc/{deal_id}'.format(**url_params)
         action = 'delete'
         response = self._req(action, endpoint, params, session)
 
         if response.status_code == 200:
             deal_reference = json.loads(response.text)['dealReference']
-            return self.fetch_deal_by_deal_reference(deal_reference)
+            return channel.wait_event("dealReference", deal_reference)
         else:
             raise IGException(response.text)
 
@@ -686,13 +682,17 @@ class IGService:
         url_params = {
             'deal_id': deal_id
         }
+
+        # Create channel before the request so the events get queued
+        channel = ConfirmChannel()
+
         endpoint = '/workingorders/otc/{deal_id}'.format(**url_params)
         action = 'update'
         response = self._req(action, endpoint, params, session)
 
         if response.status_code == 200:
             deal_reference = json.loads(response.text)['dealReference']
-            return self.fetch_deal_by_deal_reference(deal_reference)
+            return channel.wait_event("dealReference", deal_reference)
         else:
             raise IGException(response.text)
 

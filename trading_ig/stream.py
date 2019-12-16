@@ -8,7 +8,7 @@ import traceback
 import logging
 import nnpy
 import dill
-from concurrent import futures
+from threading import Thread
 from queue import Queue
 import json
 
@@ -112,39 +112,47 @@ class IGStreamService(object):
         self.ls_client.disconnect()
 
 
+class ChannelClosedException(Exception):
+    msg = "Channel is already closed. Create a new channel for new events."
+
+    def __str__(self):
+        return self.msg
+
+
 class Channel:
     def __init__(self, channel):
         self.channel = channel
+        # Subscribe to channel
+        self.sub = nnpy.Socket(nnpy.AF_SP, nnpy.SUB)
+        self.sub.connect(self.channel)
+        self.sub.setsockopt(nnpy.SUB, nnpy.SUB_SUBSCRIBE, '')
+        # Create queue and start updating it
+        self.queue = Queue()
+        Thread(target=self._update_queue).start()
 
-    def _update_queue(self, sub, queue):
+    def _update_queue(self):
         while True:
             try:
-                queue.put(json.loads(dill.loads(sub.recv())))
+                data = json.loads(dill.loads(self.sub.recv()))
+                self.queue.put(data)
             except nnpy.errors.NNError:
                 break
 
-    def _process_queue(self, queue, function):
+    def _process_queue(self, function):
         data = None
         while True:
-            data = queue.get()
+            data = self.queue.get()
             if function(data):
                 break
         return data
 
     def wait_event(self, key, value):
-        sub = nnpy.Socket(nnpy.AF_SP, nnpy.SUB)
-        sub.connect(self.channel)
-        sub.setsockopt(nnpy.SUB, nnpy.SUB_SUBSCRIBE, '')
-        queue = Queue()
-        result = None
-        with futures.ThreadPoolExecutor() as executor:
-            executor.submit(self._update_queue, sub, queue)
-            future = executor.submit(
-                self._process_queue, queue, lambda v: v[key] == value)
-            result = future.result()
-            sub.close()  # Close subscriber to stop _update_queue
-        queue.queue.clear()  # Empty queue
-        return result
+        if not self.sub:
+            raise ChannelClosedException
+        event = self._process_queue(lambda v: v[key] == value)
+        self.sub.close()  # Close subscriber to stop _update_queue
+        self.sub = None  # Disable subscriber so it doesn't get called any more
+        return event
 
 
 class ConfirmChannel(Channel):

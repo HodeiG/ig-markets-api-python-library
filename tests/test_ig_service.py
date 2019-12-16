@@ -20,6 +20,7 @@ import trading_ig
 from trading_ig import IGService
 from trading_ig.utils import remove
 from trading_ig.config import config
+import pytest
 
 """
 Environment variables must be set using
@@ -37,6 +38,7 @@ CACHE_NAME = 'cache'
 remove(CACHE_NAME)
 
 
+@pytest.mark.skip(reason="This is a functional test that needs IG credentials")
 def test_ig_service():
 
     delay_for_ig = 30

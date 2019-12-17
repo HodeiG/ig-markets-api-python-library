@@ -1,10 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from __future__ import absolute_import, division, print_function
-
-import sys
-import traceback
 import logging
 import nnpy
 import dill
@@ -12,7 +8,7 @@ from threading import Thread
 from queue import Queue
 import json
 
-from .lightstreamer import LSClient, Subscription
+from trading_ig.lightstreamer import LSClient, Subscription
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +43,9 @@ class IGStreamService(object):
                                   user=accountId, password=ls_password)
         try:
             self.ls_client.connect()
-        except Exception:
-            logger.error("Unable to connect to Lightstreamer Server")
-            logger.error(traceback.format_exc())
-            sys.exit(1)
+        except Exception as exc:
+            logger.exception("Unable to connect to Lightstreamer Server")
+            raise exc
 
         # Create subsciption channel for trade events
         self._create_subscription_channels(accountId)
@@ -147,6 +142,7 @@ class Channel:
         return data
 
     def wait_event(self, key, value):
+        logging.info("Wait for event '%s' == '%s'", key, value)
         if not self.sub:
             raise ChannelClosedException
         event = self._process_queue(lambda v: v[key] == value)

@@ -100,8 +100,12 @@ class IGStreamService(object):
             self.ls_client.unsubscribe(subcription_key)
 
     def disconnect(self):
+        logging.info("Disconnect from the light stream.")
         for publisher in self.publishers:
-            publisher.close()
+            try:
+                publisher.close()
+            except Exception:
+                logging.exception("Failed to close publisher %s", publisher)
         self.publishers = []
         self.unsubscribe_all()
         self.ls_client.disconnect()

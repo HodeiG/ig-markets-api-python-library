@@ -1091,6 +1091,7 @@ class IGService:
 
     def logout(self, session=None):
         """Log out of the current session"""
+        logger.info("Logging out of the current session")
         params = {}
         endpoint = '/session'
         action = 'delete'
@@ -1098,10 +1099,13 @@ class IGService:
         self.close_stream()
 
     def close_stream(self):
+        """Close light stream"""
         if hasattr(self, 'stream') and self.stream:
             self.stream.disconnect()
 
     def create_stream(self):
+        """Create light stream"""
+        logger.info("Creating light stream session")
         self.close_stream()
         session = self.read_session()
         self.stream = IGStreamService(self)
@@ -1111,6 +1115,7 @@ class IGService:
     def create_session(self, session=None):
         """Creates a trading session, obtaining session tokens for
         subsequent API access"""
+        logger.info("Creating new IG session")
         params = {
             'identifier': self.IG_USERNAME,
             'password': self.IG_PASSWORD
@@ -1126,6 +1131,7 @@ class IGService:
 
     def switch_account(self, account_id, default_account, session=None):
         """Switches active accounts, optionally setting the default account"""
+        logger.info("Switching IG account")
         params = {
             'accountId': account_id,
             'defaultAccount': default_account

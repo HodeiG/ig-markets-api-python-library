@@ -1102,6 +1102,7 @@ class IGService:
         """Close light stream"""
         if hasattr(self, 'stream') and self.stream:
             self.stream.disconnect()
+            self.stream = None  # Disable stream so it doesn't get called again
 
     def create_stream(self):
         """Create light stream"""

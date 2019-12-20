@@ -167,7 +167,10 @@ class Channel:
         data = None
         while True:
             data = self.queue.get()
-            if data is None or function(data):
+            if data is None:
+                logging.error("Exiting as no data was read from queue.")
+                break
+            elif function(data):
                 break
         return data
 

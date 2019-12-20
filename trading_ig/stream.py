@@ -4,17 +4,18 @@
 import logging
 import nnpy
 import dill
-from threading import Thread
+from threading import Thread, Lock
 from queue import Queue
 import json
+import time
 
 from trading_ig.lightstreamer import LSClient, Subscription
 
 logger = logging.getLogger(__name__)
 
-SUB_TRADE_CONFIRMS = 'inproc://sub_trade_confirms'
-SUB_TRADE_OPU = 'inproc://sub_trade_opu'
-SUB_TRADE_WOU = 'inproc://sub_trade_wou'
+ADDR_CONFIRMS = 'inproc://sub_trade_confirms'
+ADDR_OPU = 'inproc://sub_trade_opu'
+ADDR_WOU = 'inproc://sub_trade_wou'
 
 
 class IGStreamService(object):
@@ -63,15 +64,15 @@ class IGStreamService(object):
             fields=["CONFIRMS", "OPU", "WOU"])
 
         pub_confirms = nnpy.Socket(nnpy.AF_SP, nnpy.PUB)
-        pub_confirms.bind(SUB_TRADE_CONFIRMS)
+        pub_confirms.bind(ADDR_CONFIRMS)
         self.publishers.append(pub_confirms)
 
         pub_opu = nnpy.Socket(nnpy.AF_SP, nnpy.PUB)
-        pub_opu.bind(SUB_TRADE_OPU)
+        pub_opu.bind(ADDR_OPU)
         self.publishers.append(pub_opu)
 
         pub_wou = nnpy.Socket(nnpy.AF_SP, nnpy.PUB)
-        pub_wou.bind(SUB_TRADE_WOU)
+        pub_wou.bind(ADDR_WOU)
         self.publishers.append(pub_wou)
 
         def on_item_update(data):
@@ -119,29 +120,54 @@ class ChannelClosedException(Exception):
 
 
 class Channel:
-    def __init__(self, channel):
-        self.channel = channel
-        # Subscribe to channel
+    def __init__(self, addr, timeout):
+        """
+        Class to subscribe to the publisher on address 'addr' and queue the
+        events so they can be processed later on.
+
+        The channel will timeout if no succesfull events are found.
+        """
+        self.addr = addr
+        self.lock = Lock()
+        # Subscribe to addr
         self.sub = nnpy.Socket(nnpy.AF_SP, nnpy.SUB)
-        self.sub.connect(self.channel)
+        self.sub.connect(self.addr)
         self.sub.setsockopt(nnpy.SUB, nnpy.SUB_SUBSCRIBE, '')
         # Create queue and start updating it
         self.queue = Queue()
+        # Start updating the queue
         Thread(target=self._update_queue).start()
+        # Timeout subscriber
+        Thread(target=self._kill_subscriber, args=(timeout,)).start()
 
     def _update_queue(self):
         while True:
             try:
                 data = json.loads(dill.loads(self.sub.recv()))
                 self.queue.put(data)
-            except nnpy.errors.NNError:
+            # Read can mainly fail for 2 reasons:
+            # 1. sub.recv() exception due to closed subscription
+            # 2. sub is None as subscriber has been disabled after recv()
+            except (nnpy.errors.NNError, AttributeError):
+                self.queue.put(None)
                 break
+
+    def _kill_subscriber(self, timeout=0):
+        while timeout > 0 and self.sub:
+            time.sleep(0.2)
+            timeout -= 0.2
+        with self.lock:  # Lock to only allow one thread to close subscriber
+            if self.sub:
+                # Close subscriber to stop _update_queue
+                self.sub.close()
+                # Disable subscriber so it cannot be called again
+                self.sub = None
 
     def _process_queue(self, function):
         data = None
         while True:
             data = self.queue.get()
-            if function(data):
+            if data is None or function(data):
                 break
         return data
 
@@ -150,21 +176,20 @@ class Channel:
         if not self.sub:
             raise ChannelClosedException
         event = self._process_queue(lambda v: v[key] == value)
-        self.sub.close()  # Close subscriber to stop _update_queue
-        self.sub = None  # Disable subscriber so it doesn't get called any more
+        self._kill_subscriber()
         return event
 
 
 class ConfirmChannel(Channel):
-    def __init__(self):
-        super().__init__(SUB_TRADE_CONFIRMS)
+    def __init__(self, timeout=120):
+        super().__init__(ADDR_CONFIRMS, timeout)
 
 
 class OPUChannel(Channel):
-    def __init__(self):
-        super().__init__(SUB_TRADE_OPU)
+    def __init__(self, timeout=120):
+        super().__init__(ADDR_OPU, timeout)
 
 
 class WOUChannel(Channel):
-    def __init__(self):
-        super().__init__(SUB_TRADE_WOU)
+    def __init__(self, timeout=120):
+        super().__init__(ADDR_WOU, timeout)

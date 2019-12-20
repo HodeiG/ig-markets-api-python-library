@@ -7,7 +7,6 @@ def test_confirmation_channel():
     from trading_ig.stream import ChannelClosedException
     import nnpy
     import dill
-    import time
     from threading import Thread
 
     pub = nnpy.Socket(nnpy.AF_SP, nnpy.PUB)
@@ -22,23 +21,27 @@ def test_confirmation_channel():
             except nnpy.errors.NNError:
                 break
             index += 1
-            time.sleep(0.05)
 
-    # Test that the publisher data gets read and that the channel gets closed
-    # Create first the channel so the deals start getting queued
-    channel = ConfirmChannel()  # Using default timeout
+    # Test that the publisher data gets read and that the channels get closed
+    # Create first the channels so the deals start getting queued
+    channel1 = ConfirmChannel()  # Using default timeout
+    channel2 = ConfirmChannel()  # Using default timeout
+
+    # Create publisher after the channel, so both channels read the same data
     thread = Thread(target=publisher)
     thread.start()
-    # Wait for the queue to get updated, so we can truly test that the events
-    # are queued
-    while channel.queue.qsize() <= 2:
-        time.sleep(0.02)
-    assert channel.wait_event("dealReference", 0) == {'dealReference': 0}
+
+    deal = channel1._process_queue(lambda x: True)  # Get the first deal
+    channel1._kill_subscriber()  # Kill subscriber
+    ref1 = deal['dealReference']
+    ref2 = ref1 + 1   # Find a ref higher than ref1
+    deal = channel2.wait_event("dealReference", ref2)
+    assert deal['dealReference'] == ref2
     with pytest.raises(ChannelClosedException):
-        assert channel.wait_event("dealReference", 0)
+        assert channel1.wait_event("dealReference", 0)
 
     # Test that the subscriber timeouts
-    channel = ConfirmChannel(timeout=0.5)
+    channel = ConfirmChannel(timeout=0.2)
     assert channel.wait_event("dealReference", 0) is None
 
     pub.close()  # Stop thread

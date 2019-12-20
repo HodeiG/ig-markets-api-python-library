@@ -154,8 +154,8 @@ class Channel:
 
     def _kill_subscriber(self, timeout=0):
         while timeout > 0 and self.sub:
-            time.sleep(0.2)
-            timeout -= 0.2
+            time.sleep(0.1)
+            timeout -= 0.1
         with self.lock:  # Lock to only allow one thread to close subscriber
             if self.sub:
                 # Close subscriber to stop _update_queue

@@ -104,6 +104,12 @@ class IGStreamService(object):
         logging.info("Disconnect from the light stream.")
         for publisher in self.publishers:
             try:
+                # Send None to all subscribers to give the chance to unsuscribe
+                publisher.send(dill.dumps(None))
+                # Sleep before closing channel, otherwise message might get
+                # lost
+                time.sleep(0.1)
+                # Close publisher
                 publisher.close()
             except Exception:
                 logging.exception("Failed to close publisher %s", publisher)
@@ -143,14 +149,18 @@ class Channel:
     def _update_queue(self):
         while True:
             try:
-                data = json.loads(dill.loads(self.sub.recv()))
-                self.queue.put(data)
+                data = dill.loads(self.sub.recv())
+                if data is None:
+                    logger.warning("Stop updating queue as None was received.")
+                    break
+                self.queue.put(json.loads(data))
             # Read can mainly fail for 2 reasons:
             # 1. sub.recv() exception due to closed subscription
             # 2. sub is None as subscriber has been disabled after recv()
             except (nnpy.errors.NNError, AttributeError):
-                self.queue.put(None)
                 break
+        # Put None on queue so the consumer stops.
+        self.queue.put(None)
 
     def _kill_subscriber(self, timeout=0):
         while timeout > 0 and self.sub:
@@ -168,7 +178,7 @@ class Channel:
         while True:
             data = self.queue.get()
             if data is None:
-                logging.error("Exiting as no data was read from queue.")
+                logging.error("Exiting as None was read from queue.")
                 break
             elif function(data):
                 break

@@ -1,4 +1,5 @@
 import pytest
+import time
 
 
 def test_confirmation_channel():
@@ -44,4 +45,11 @@ def test_confirmation_channel():
     channel = ConfirmChannel(timeout=0.2)
     assert channel.wait_event("dealReference", 0) is None
 
+    # Test that the susbscriber deals with None received before publisher gets
+    # closed
+    channel = ConfirmChannel()
+    # Simulate publisher sends None before it gets closed
+    pub.send(dill.dumps(None))
+    time.sleep(0.1)  # Give time to the subscriber to read None
     pub.close()  # Stop thread
+    assert channel.wait_event("dealReference", 0) is None

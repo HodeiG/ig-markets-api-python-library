@@ -17,7 +17,7 @@ import time
 
 from .utils import (_HAS_PANDAS, _HAS_MUNCH)
 from .utils import (conv_resol, conv_datetime, conv_to_ms, DATE_FORMATS)
-from trading_ig.stream import IGStreamService, ConfirmChannel
+from trading_ig.stream import IGStreamService, TradesChannel
 
 logger = logging.getLogger(__name__)
 
@@ -468,7 +468,7 @@ class IGService:
         }
 
         # Create channel before the request so the events get queued
-        channel = ConfirmChannel()
+        channel = TradesChannel()
 
         endpoint = '/positions/otc'
         action = 'delete'
@@ -510,7 +510,7 @@ class IGService:
         action = 'create'
 
         # Create channel before the request so the events get queued
-        channel = ConfirmChannel()
+        channel = TradesChannel()
 
         self.crud_session.HEADERS['LOGGED_IN']['Version'] = '2'
         response = self._req(action, endpoint, params, session)
@@ -536,7 +536,7 @@ class IGService:
         }
 
         # Create channel before the request so the events get queued
-        channel = ConfirmChannel()
+        channel = TradesChannel()
 
         endpoint = '/positions/otc/{deal_id}'.format(**url_params)
         action = 'update'
@@ -633,7 +633,7 @@ class IGService:
         action = 'create'
 
         # Create channel before the request so the events get queued
-        channel = ConfirmChannel()
+        channel = TradesChannel()
 
         self.crud_session.HEADERS['LOGGED_IN']['Version'] = str(VERSION)
         response = self._req(action, endpoint, params, session)
@@ -653,7 +653,7 @@ class IGService:
         }
 
         # Create channel before the request so the events get queued
-        channel = ConfirmChannel()
+        channel = TradesChannel()
 
         endpoint = '/workingorders/otc/{deal_id}'.format(**url_params)
         action = 'delete'
@@ -684,7 +684,7 @@ class IGService:
         }
 
         # Create channel before the request so the events get queued
-        channel = ConfirmChannel()
+        channel = TradesChannel()
 
         endpoint = '/workingorders/otc/{deal_id}'.format(**url_params)
         action = 'update'

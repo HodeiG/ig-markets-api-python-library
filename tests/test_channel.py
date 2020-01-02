@@ -3,15 +3,15 @@ import time
 
 
 def test_confirmation_channel():
-    from trading_ig.stream import ConfirmChannel
-    from trading_ig.stream import ADDR_CONFIRMS
+    from trading_ig.stream import TradesChannel
+    from trading_ig.stream import ADDR_TRADES
     from trading_ig.stream import ChannelClosedException
     import nnpy
     import dill
     from threading import Thread
 
     pub = nnpy.Socket(nnpy.AF_SP, nnpy.PUB)
-    pub.bind(ADDR_CONFIRMS)
+    pub.bind(ADDR_TRADES)
 
     # Create publisher thread
     def publisher():
@@ -25,8 +25,8 @@ def test_confirmation_channel():
 
     # Test that the publisher data gets read and that the channels get closed
     # Create first the channels so the deals start getting queued
-    channel1 = ConfirmChannel()  # Using default timeout
-    channel2 = ConfirmChannel()  # Using default timeout
+    channel1 = TradesChannel()  # Using default timeout
+    channel2 = TradesChannel()  # Using default timeout
 
     # Create publisher after the channel, so both channels read the same data
     thread = Thread(target=publisher)
@@ -42,12 +42,12 @@ def test_confirmation_channel():
         assert channel1.wait_event("dealReference", 0)
 
     # Test that the subscriber timeouts
-    channel = ConfirmChannel(timeout=0.2)
+    channel = TradesChannel(timeout=0.2)
     assert channel.wait_event("dealReference", 0) is None
 
     # Test that the susbscriber deals with None received before publisher gets
     # closed
-    channel = ConfirmChannel()
+    channel = TradesChannel()
     # Simulate publisher sends None before it gets closed
     pub.send(dill.dumps(None))
     time.sleep(0.1)  # Give time to the subscriber to read None

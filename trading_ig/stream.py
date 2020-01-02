@@ -13,9 +13,7 @@ from trading_ig.lightstreamer import LSClient, Subscription
 
 logger = logging.getLogger(__name__)
 
-ADDR_CONFIRMS = 'inproc://sub_trade_confirms'
-ADDR_OPU = 'inproc://sub_trade_opu'
-ADDR_WOU = 'inproc://sub_trade_wou'
+ADDR_TRADES = 'inproc://subs_trade'
 
 
 class IGStreamService(object):
@@ -63,33 +61,28 @@ class IGStreamService(object):
             items=["TRADE:%s" % accountId],
             fields=["CONFIRMS", "OPU", "WOU"])
 
-        pub_confirms = nnpy.Socket(nnpy.AF_SP, nnpy.PUB)
-        pub_confirms.bind(ADDR_CONFIRMS)
-        self.publishers.append(pub_confirms)
-
-        pub_opu = nnpy.Socket(nnpy.AF_SP, nnpy.PUB)
-        pub_opu.bind(ADDR_OPU)
-        self.publishers.append(pub_opu)
-
-        pub_wou = nnpy.Socket(nnpy.AF_SP, nnpy.PUB)
-        pub_wou.bind(ADDR_WOU)
-        self.publishers.append(pub_wou)
+        pub_trades = nnpy.Socket(nnpy.AF_SP, nnpy.PUB)
+        pub_trades.bind(ADDR_TRADES)
+        self.publishers.append(pub_trades)
 
         def on_item_update(data):
             logger.info(data)
             values = data.get('values', {})
-            # Publish confirms
-            event = values.get('CONFIRMS')
-            if event:
-                pub_confirms.send(dill.dumps(event))
-            # Publish opu
-            event = values.get('OPU')
-            if event:
-                pub_opu.send(dill.dumps(event))
-            # Publish wou
-            event = values.get('WOU')
-            if event:
-                pub_wou.send(dill.dumps(event))
+            try:
+                # Publish confirms
+                event = values.get('CONFIRMS')
+                if event:
+                    pub_trades.send(dill.dumps(event))
+                # Publish opu
+                event = values.get('OPU')
+                if event:
+                    pub_trades.send(dill.dumps(event))
+                # Publish wou
+                event = values.get('WOU')
+                if event:
+                    pub_trades.send(dill.dumps(event))
+            except nnpy.errors.NNError:
+                logging.exception("Failed to publish event.")
 
         subscription.addlistener(on_item_update)
         self.ls_client.subscribe(subscription)
@@ -107,7 +100,7 @@ class IGStreamService(object):
                 # Send None to all subscribers to give the chance to unsuscribe
                 publisher.send(dill.dumps(None))
                 # Sleep before closing channel, otherwise message might get
-                # lost
+                # lost before subscribers receive it.
                 time.sleep(0.1)
                 # Close publisher
                 publisher.close()
@@ -125,15 +118,16 @@ class ChannelClosedException(Exception):
         return self.msg
 
 
-class Channel:
-    def __init__(self, addr, timeout):
+class TradesChannel:
+    addr = ADDR_TRADES
+
+    def __init__(self, timeout=120):
         """
         Class to subscribe to the publisher on address 'addr' and queue the
         events so they can be processed later on.
 
         The channel will timeout if no succesfull events are found.
         """
-        self.addr = addr
         self.lock = Lock()
         # Subscribe to addr
         self.sub = nnpy.Socket(nnpy.AF_SP, nnpy.SUB)
@@ -191,18 +185,3 @@ class Channel:
         event = self._process_queue(lambda v: v[key] == value)
         self._kill_subscriber()
         return event
-
-
-class ConfirmChannel(Channel):
-    def __init__(self, timeout=120):
-        super().__init__(ADDR_CONFIRMS, timeout)
-
-
-class OPUChannel(Channel):
-    def __init__(self, timeout=120):
-        super().__init__(ADDR_OPU, timeout)
-
-
-class WOUChannel(Channel):
-    def __init__(self, timeout=120):
-        super().__init__(ADDR_WOU, timeout)

@@ -93,22 +93,25 @@ class IGStreamService(object):
         for subcription_key in subscriptions:
             self.ls_client.unsubscribe(subcription_key)
 
-    def disconnect(self):
-        logging.info("Disconnect from the light stream.")
+    def close_publishers(self):
         for publisher in self.publishers:
             try:
-                # Send None to all subscribers to give the chance to unsuscribe
+                # Send None to all subscribers to give a chance to unsuscribe
                 publisher.send(dill.dumps(None))
                 # Sleep before closing channel, otherwise message might get
                 # lost before subscribers receive it.
                 time.sleep(0.1)
-                # Close publisher
+                # Close definitely the publishing channel
                 publisher.close()
             except Exception:
                 logging.exception("Failed to close publisher %s", publisher)
-        self.publishers = []
+        self.publishers = []  # Empty publishing list
+
+    def disconnect(self):
+        logging.info("Disconnect from the light stream.")
         self.unsubscribe_all()
         self.ls_client.disconnect()
+        self.close_publishers()
 
 
 class ChannelClosedException(Exception):

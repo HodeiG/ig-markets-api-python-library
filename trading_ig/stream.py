@@ -11,8 +11,6 @@ from trading_ig.lightstreamer import LSClient, Subscription
 
 logger = logging.getLogger(__name__)
 
-ADDR_TRADES = 'inproc://subs_trade'
-
 
 class IGStreamService(object):
     def __init__(self, ig_service):

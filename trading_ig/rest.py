@@ -17,13 +17,28 @@ import time
 
 from .utils import (_HAS_PANDAS, _HAS_MUNCH)
 from .utils import (conv_resol, conv_datetime, conv_to_ms, DATE_FORMATS)
-from trading_ig.stream import IGStreamService, TradesChannel
+from trading_ig.stream import IGStreamService
 
 logger = logging.getLogger(__name__)
 
 
 class IGException(Exception):
     pass
+
+
+def process_response(func):
+    def _decorator(self, *args, **kwargs):
+        listener = self.stream.add_trade_listener()
+        response = func(self, *args, **kwargs)
+        if response.status_code == 200:
+            deal_reference = json.loads(response.text)['dealReference']
+            deal = listener.listen_event("dealReference", deal_reference)
+            self.stream.del_trade_listener(listener)
+            return deal
+        else:
+            self.stream.del_trade_listener(listener)
+            raise IGException(response.text)
+    return _decorator
 
 
 class IGSessionCRUD(object):
@@ -453,6 +468,7 @@ class IGService:
 
         return data
 
+    @process_response
     def close_open_position(self, deal_id, direction, epic, expiry, level,
                             order_type, quote_id, size, session=None):
         """Closes one or more OTC positions"""
@@ -467,19 +483,11 @@ class IGService:
             'size': size
         }
 
-        # Create channel before the request so the events get queued
-        channel = TradesChannel()
-
         endpoint = '/positions/otc'
         action = 'delete'
-        response = self._req(action, endpoint, params, session)
+        return self._req(action, endpoint, params, session)
 
-        if response.status_code == 200:
-            deal_reference = json.loads(response.text)['dealReference']
-            return channel.wait_event("dealReference", deal_reference)
-        else:
-            raise IGException(response.text)
-
+    @process_response
     def create_open_position(self, currency_code, direction, epic, expiry,
                              force_open, guaranteed_stop, level,
                              limit_distance, limit_level, order_type,
@@ -509,21 +517,13 @@ class IGService:
         endpoint = '/positions/otc'
         action = 'create'
 
-        # Create channel before the request so the events get queued
-        channel = TradesChannel()
-
         self.crud_session.HEADERS['LOGGED_IN']['Version'] = '2'
         response = self._req(action, endpoint, params, session)
         if 'Version' in self.crud_session.HEADERS['LOGGED_IN']:
             del self.crud_session.HEADERS['LOGGED_IN']['Version']
+        return response
 
-        # Remove the header to back compatibility
-        if response.status_code == 200:
-            deal_reference = json.loads(response.text)['dealReference']
-            return channel.wait_event("dealReference", deal_reference)
-        else:
-            raise IGException(response.text)
-
+    @process_response
     def update_open_position(self, limit_level, stop_level, deal_id,
                              session=None):
         """Updates an OTC position"""
@@ -535,18 +535,9 @@ class IGService:
             'deal_id': deal_id
         }
 
-        # Create channel before the request so the events get queued
-        channel = TradesChannel()
-
         endpoint = '/positions/otc/{deal_id}'.format(**url_params)
         action = 'update'
-        response = self._req(action, endpoint, params, session)
-
-        if response.status_code == 200:
-            deal_reference = json.loads(response.text)['dealReference']
-            return channel.wait_event("dealReference", deal_reference)
-        else:
-            raise IGException(response.text)
+        return self._req(action, endpoint, params, session)
 
     def fetch_working_orders(self, session=None):
         """Returns all open working orders for the active account"""
@@ -593,6 +584,7 @@ class IGService:
 
         return data
 
+    @process_response
     def create_working_order(self, currency_code, direction, epic, expiry,
                              guaranteed_stop, level, size,
                              time_in_force, order_type,
@@ -632,19 +624,12 @@ class IGService:
         endpoint = '/workingorders/otc'
         action = 'create'
 
-        # Create channel before the request so the events get queued
-        channel = TradesChannel()
-
         self.crud_session.HEADERS['LOGGED_IN']['Version'] = str(VERSION)
         response = self._req(action, endpoint, params, session)
         del(self.crud_session.HEADERS['LOGGED_IN']['Version'])
+        return response
 
-        if response.status_code == 200:
-            deal_reference = json.loads(response.text)['dealReference']
-            return channel.wait_event("dealReference", deal_reference)
-        else:
-            raise IGException(response.text)
-
+    @process_response
     def delete_working_order(self, deal_id, session=None):
         """Deletes an OTC working order"""
         params = {}
@@ -652,19 +637,11 @@ class IGService:
             'deal_id': deal_id
         }
 
-        # Create channel before the request so the events get queued
-        channel = TradesChannel()
-
         endpoint = '/workingorders/otc/{deal_id}'.format(**url_params)
         action = 'delete'
-        response = self._req(action, endpoint, params, session)
+        return self._req(action, endpoint, params, session)
 
-        if response.status_code == 200:
-            deal_reference = json.loads(response.text)['dealReference']
-            return channel.wait_event("dealReference", deal_reference)
-        else:
-            raise IGException(response.text)
-
+    @process_response
     def update_working_order(self, good_till_date, level, limit_distance,
                              limit_level, stop_distance, stop_level,
                              time_in_force, order_type, deal_id, session=None):
@@ -683,18 +660,9 @@ class IGService:
             'deal_id': deal_id
         }
 
-        # Create channel before the request so the events get queued
-        channel = TradesChannel()
-
         endpoint = '/workingorders/otc/{deal_id}'.format(**url_params)
         action = 'update'
-        response = self._req(action, endpoint, params, session)
-
-        if response.status_code == 200:
-            deal_reference = json.loads(response.text)['dealReference']
-            return channel.wait_event("dealReference", deal_reference)
-        else:
-            raise IGException(response.text)
+        return self._req(action, endpoint, params, session)
 
     # -------- END -------- #
 

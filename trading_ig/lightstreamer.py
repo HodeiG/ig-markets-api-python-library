@@ -304,7 +304,7 @@ class LSClient(object):
         if server_response == OK_CMD:
             log.info("Successfully subscribed ")
         else:
-            log.warning("Subscription error")
+            log.error("Subscription error: %s", server_response)
         return self._current_subscription_key
 
     def unsubscribe(self, subcription_key):
@@ -322,7 +322,7 @@ class LSClient(object):
                 del self._subscriptions[subcription_key]
                 log.info("Successfully unsubscribed")
             else:
-                log.warning("Unsubscription error")
+                log.error("Subscription error: %s", server_response)
         else:
             log.warning("No subscription key %s found!", subcription_key)
 

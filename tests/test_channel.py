@@ -1,55 +1,55 @@
-import pytest
-import time
-
-
-def test_confirmation_channel():
-    from trading_ig.stream import TradesChannel
-    from trading_ig.stream import ADDR_TRADES
-    from trading_ig.stream import ChannelClosedException
-    import nnpy
-    import dill
+def test_listener():
+    from trading_ig.stream import IGStreamService
     from threading import Thread
 
-    pub = nnpy.Socket(nnpy.AF_SP, nnpy.PUB)
-    pub.bind(ADDR_TRADES)
+    stream = IGStreamService(None)
+    FINISH = False
 
-    # Create publisher thread
     def publisher():
         index = 0
-        while True:
-            try:
-                pub.send(dill.dumps('{"dealReference": %s}' % index))
-            except nnpy.errors.NNError:
-                break
+        while not FINISH:
+            item = {
+                'values': {
+                    'WOU': None,
+                    'OPU': None,
+                    'CONFIRMS': '{"dealReference": %s}' % index
+                }
+            }
+            stream.on_item_update(item)
             index += 1
 
     # Test that the publisher data gets read and that the channels get closed
     # Create first the channels so the deals start getting queued
-    channel1 = TradesChannel()  # Using default timeout
-    channel2 = TradesChannel()  # Using default timeout
+    assert len(stream.trades_listeners) == 0
+    channel1 = stream.add_trade_listener()  # Using default timeout
+    assert len(stream.trades_listeners) == 1
+    channel2 = stream.add_trade_listener()  # Using default timeout
+    assert len(stream.trades_listeners) == 2
 
-    # Create publisher after the channel, so both channels read the same data
+    # Create publisher after the listeners so both listeners read the same data
     thread = Thread(target=publisher)
     thread.start()
 
-    deal = channel1._process_queue(lambda x: True)  # Get the first deal
-    channel1._kill_subscriber()  # Kill subscriber
+    # Test we can get any deal
+    deal = channel1.listen(lambda x: True)  # Get the first deal
+    assert 'dealReference' in deal.keys()
+    stream.del_trade_listener(channel1)  # Stop listener
+    assert len(stream.trades_listeners) == 1
+
+    # Test we can get a deal with higher reference number
     ref1 = deal['dealReference']
     ref2 = ref1 + 1   # Find a ref higher than ref1
-    deal = channel2.wait_event("dealReference", ref2)
+    deal = channel2.listen_event("dealReference", ref2)
     assert deal['dealReference'] == ref2
-    with pytest.raises(ChannelClosedException):
-        assert channel1.wait_event("dealReference", 0)
+    stream.del_trade_listener(channel2)  # Stop listener
+    assert len(stream.trades_listeners) == 0
 
     # Test that the subscriber timeouts
-    channel = TradesChannel(timeout=0.2)
-    assert channel.wait_event("dealReference", 0) is None
+    channel = stream.add_trade_listener(timeout=0.2)
+    assert len(stream.trades_listeners) == 1
+    assert channel.listen_event("dealReference", 0) is None
+    stream.del_trade_listener(channel)  # Stop listener
+    assert len(stream.trades_listeners) == 0
 
-    # Test that the susbscriber deals with None received before publisher gets
-    # closed
-    channel = TradesChannel()
-    # Simulate publisher sends None before it gets closed
-    pub.send(dill.dumps(None))
-    time.sleep(0.1)  # Give time to the subscriber to read None
-    pub.close()  # Stop thread
-    assert channel.wait_event("dealReference", 0) is None
+    # Stop publisher thread
+    FINISH = True

@@ -89,14 +89,14 @@ setup(
     # requirements files see:
     # https://packaging.python.org/en/latest/technical.html#install-requires-vs-requirements-files
     install_requires=['pandas', 'requests', 'requests-cache',
-                      'six', 'munch', 'dill', 'nnpy'],  # bunch->lunch->infi.bunch->munch
+                      'six', 'munch'],  # bunch->lunch->infi.bunch->munch
 
     # List additional groups of dependencies here (e.g. development dependencies).
     # You can install these using the following syntax, for example:
     # $ pip install -e .[dev,test]
     extras_require={
-        'dev': ['check-manifest', 'nose', 'pytest'],
-        'test': ['coverage', 'nose', 'pytest'],
+        'dev': ['check-manifest', 'nose', 'pytest', 'requests-mock'],
+        'test': ['coverage', 'nose', 'pytest', 'requests-mock'],
     },
 
     # If there are data files included in your packages that need to be

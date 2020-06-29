@@ -89,7 +89,7 @@ setup(
     # requirements files see:
     # https://packaging.python.org/en/latest/technical.html#install-requires-vs-requirements-files
     install_requires=['pandas', 'requests', 'requests-cache',
-                      'six', 'munch==2.5.0'],  # bunch->lunch->infi.bunch->munch
+                      'six', 'munch'],  # bunch->lunch->infi.bunch->munch
 
     # List additional groups of dependencies here (e.g. development dependencies).
     # You can install these using the following syntax, for example:

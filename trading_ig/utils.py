@@ -38,22 +38,22 @@ def conv_resol(resolution):
     if _HAS_PANDAS:
         from pandas.tseries.frequencies import to_offset
         d = {
-            to_offset('1Min'): 'MINUTE',
-            to_offset('2Min'): 'MINUTE_2',
-            to_offset('3Min'): 'MINUTE_3',
-            to_offset('5Min'): 'MINUTE_5',
-            to_offset('10Min'): 'MINUTE_10',
-            to_offset('15Min'): 'MINUTE_15',
-            to_offset('30Min'): 'MINUTE_30',
-            to_offset('1H'): 'HOUR',
-            to_offset('2H'): 'HOUR_2',
-            to_offset('3H'): 'HOUR_3',
-            to_offset('4H'): 'HOUR_4',
-            to_offset('D'): 'DAY',
-            to_offset('W'): 'WEEK',
-            to_offset('M'): 'MONTH'
+            str(to_offset('1Min')): 'MINUTE',
+            str(to_offset('2Min')): 'MINUTE_2',
+            str(to_offset('3Min')): 'MINUTE_3',
+            str(to_offset('5Min')): 'MINUTE_5',
+            str(to_offset('10Min')): 'MINUTE_10',
+            str(to_offset('15Min')): 'MINUTE_15',
+            str(to_offset('30Min')): 'MINUTE_30',
+            str(to_offset('1H')): 'HOUR',
+            str(to_offset('2H')): 'HOUR_2',
+            str(to_offset('3H')): 'HOUR_3',
+            str(to_offset('4H')): 'HOUR_4',
+            str(to_offset('D')): 'DAY',
+            str(to_offset('W')): 'WEEK',
+            str(to_offset('M')): 'MONTH'
         }
-        offset = to_offset(resolution)
+        offset = str(to_offset(resolution))
         if offset in d:
             return d[offset]
         else:

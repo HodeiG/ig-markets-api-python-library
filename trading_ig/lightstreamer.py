@@ -19,7 +19,11 @@
 import sys
 import logging
 import threading
-import traceback
+
+
+# urlopen timeout
+TIMEOUT = 60
+
 
 # Modules aliasing and function utilities to support a
 # very coarse version differentiation between Python 2 and Python 3.
@@ -52,7 +56,7 @@ else:
         return d.iteritems()
 
     def wait_for_input():
-        raw_input("{0:-^80}\n".format("HIT CR TO UNSUBSCRIBE AND DISCONNECT FROM \
+        input("{0:-^80}\n".format("HIT CR TO UNSUBSCRIBE AND DISCONNECT FROM \
 LIGHTSTREAMER"))
 CONNECTION_URL_PATH = "lightstreamer/create_session.txt"
 BIND_URL_PATH = "lightstreamer/bind_session.txt"
@@ -165,7 +169,7 @@ class LSClient(object):
         url = urljoin(base_url.geturl(), url)
         body = self._encode_params(params)
         log.debug("Making a request to <%s> with body <%s>", url, body)
-        return _urlopen(url, data=body)
+        return _urlopen(url, data=body, timeout=TIMEOUT)
 
     def _set_control_link_url(self, custom_address=None):
         """Set the address to use for the Control Connection
@@ -338,8 +342,8 @@ class LSClient(object):
                 self._subscriptions[table].notifyupdate(item)
             else:
                 log.warning("No subscription found!")
-        except Exception:
-            print(traceback.format_exc())
+        except Exception as exc:
+            log.exception(exc)
 
     def _receive(self):
         rebind = False
@@ -351,9 +355,9 @@ class LSClient(object):
                 log.debug("Received message: <%s>", message)
                 if not message.strip():
                     message = None
-            except Exception:
+            except Exception as exc:
                 log.error("Communication error")
-                print(traceback.format_exc())
+                log.exception(exc)
                 message = None
 
             if message is None:
